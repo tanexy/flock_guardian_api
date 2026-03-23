@@ -13,6 +13,7 @@ type LoginForm struct {
 type SignUpForm struct {
 	Email    string `form:"email" binding:"required"`
 	Password string `form:"password" binding:"required"`
+	Farm     string `form:"farm" binding:"required"`
 }
 
 type Handler struct {
@@ -45,6 +46,7 @@ func (h *Handler) Login(c *gin.Context) {
 		Email        string `json:"email"`
 		Token        string `json:"XyZaccess_token"`
 		RefreshToken string `json:"XyZrefresh_token"`
+		Farm         string `json:"farm"`
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -53,10 +55,10 @@ func (h *Handler) Login(c *gin.Context) {
 			Email:        user.Email,
 			Token:        accessToken,
 			RefreshToken: refreshToken,
+			Farm:         user.Farm,
 		},
 	})
 }
-func (h *Handler) Logout(c *gin.Context) {}
 func (h *Handler) Register(c *gin.Context) {
 	var form SignUpForm
 	if err := c.ShouldBind(&form); err != nil {
@@ -69,6 +71,7 @@ func (h *Handler) Register(c *gin.Context) {
 	user := &User{
 		Email:    form.Email,
 		Password: form.Password,
+		Farm:     form.Farm,
 	}
 
 	if err := h.service.Create(user); err != nil {
