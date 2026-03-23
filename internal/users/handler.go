@@ -59,6 +59,7 @@ func (h *Handler) Login(c *gin.Context) {
 		},
 	})
 }
+func (h *Handler) Logout(c *gin.Context) {}
 func (h *Handler) Register(c *gin.Context) {
 	var form SignUpForm
 	if err := c.ShouldBind(&form); err != nil {
