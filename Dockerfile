@@ -1,4 +1,4 @@
-FROM golang:1.24.4-alpine AS build
+FROM golang:1.26.0-alpine AS build
 RUN apk add --no-cache alpine-sdk
 
 WORKDIR /app

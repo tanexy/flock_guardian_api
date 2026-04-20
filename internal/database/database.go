@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"flock_guardian_api/internal/brooders"
 	"flock_guardian_api/internal/users"
 	"fmt"
 	"log"
@@ -52,7 +53,7 @@ func New() Service {
 	}
 
 	// Auto-migrate your models
-	err = db.AutoMigrate(&users.User{})
+	err = db.AutoMigrate(&users.User{}, &brooders.Brooder{})
 	if err != nil {
 		log.Fatal("failed to migrate database:", err)
 	}
