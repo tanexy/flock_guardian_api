@@ -24,10 +24,9 @@ func Brooders(rg *gin.RouterGroup, handler *brooders.Handler) {
 		b.GET("", handler.GetAll)
 		b.POST("", handler.Create)
 		b.GET("/:id", handler.GetByID)
-		b.GET("/:id/ws", handler.HandleWebSocket)
 		b.PATCH("/:id/sensors", handler.UpdateSensors)
 		b.PATCH("/:id/actuators", handler.UpdateActuators)
-		b.POST("/:id/command", handler.SendCommand) // ← add this
+		b.POST("/:id/command", handler.SendCommand) // mobile app → MQTT → ESP32
 	}
 }
 
@@ -35,10 +34,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Accept", "Authorization", "Content-Type", "Accept-Version"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	db := s.db.DB()
@@ -51,7 +50,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Brooders
 	brooderRepo := brooders.NewGormRepository(db)
 	brooderService := brooders.NewService(brooderRepo)
-	brooderHandler := brooders.NewHandler(brooderService)
+	brooderHandler := brooders.NewHandler(brooderService, s.mqtt)
 
 	api := r.Group("/api/v1")
 	Users(api, userHandler)
@@ -64,9 +63,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 }
 
 func (s *Server) HelloWorldHandler(c *gin.Context) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{"message": "Hello World"})
 }
 
 func (s *Server) healthHandler(c *gin.Context) {
