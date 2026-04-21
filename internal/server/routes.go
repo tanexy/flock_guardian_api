@@ -24,8 +24,10 @@ func Brooders(rg *gin.RouterGroup, handler *brooders.Handler) {
 		b.GET("", handler.GetAll)
 		b.POST("", handler.Create)
 		b.GET("/:id", handler.GetByID)
-		b.PATCH("/:id/sensors", handler.UpdateSensors)     // ESP32 sends data here
-		b.PATCH("/:id/actuators", handler.UpdateActuators) // control fan/pump etc
+		b.GET("/:id/ws", handler.HandleWebSocket)
+		b.PATCH("/:id/sensors", handler.UpdateSensors)
+		b.PATCH("/:id/actuators", handler.UpdateActuators)
+		b.POST("/:id/command", handler.SendCommand) // ← add this
 	}
 }
 
