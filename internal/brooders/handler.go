@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -143,4 +144,37 @@ func (h *Handler) SendCommand(c *gin.Context) {
 		"message": "command sent",
 		"command": body.Command,
 	})
+}
+
+// GET /api/v1/brooders/:id/stream
+func (h *Handler) StreamSensors(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Access-Control-Allow-Origin", "*")
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	clientGone := c.Request.Context().Done()
+
+	for {
+		select {
+		case <-clientGone:
+			return // app disconnected
+		case <-ticker.C:
+			brooder, err := h.service.GetByID(uint(id))
+			if err != nil {
+				continue
+			}
+			c.SSEvent("sensors", brooder)
+			c.Writer.Flush()
+		}
+	}
 }

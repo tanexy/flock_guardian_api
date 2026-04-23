@@ -26,7 +26,8 @@ func Brooders(rg *gin.RouterGroup, handler *brooders.Handler) {
 		b.GET("/:id", handler.GetByID)
 		b.PATCH("/:id/sensors", handler.UpdateSensors)
 		b.PATCH("/:id/actuators", handler.UpdateActuators)
-		b.POST("/:id/command", handler.SendCommand) // mobile app → MQTT → ESP32
+		b.POST("/:id/command", handler.SendCommand)
+		b.GET("/brooders/:id/stream", handler.StreamSensors)
 	}
 }
 
