@@ -18,27 +18,28 @@ type Server struct {
 	port int
 	db   database.Service
 	mqtt *mqtt.Subscriber
+	hub  *brooders.Hub
 }
 
 func NewServer() *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 
-	// Setup MQTT
 	mqttCfg := mqtt.Config{
-		Host:     os.Getenv("MQTT_HOST"), // a14b5244.ala.eu-central-1.emqxsl.com
+		Host:     os.Getenv("MQTT_HOST"),
 		Port:     8883,
 		Username: os.Getenv("MQTT_USERNAME"),
 		Password: os.Getenv("MQTT_PASSWORD"),
 		ClientID: "flock-guardian-backend",
 	}
 
-	// Setup DB and brooder service for MQTT subscriber
 	db := database.New()
 	brooderRepo := brooders.NewGormRepository(db.DB())
 	brooderService := brooders.NewService(brooderRepo)
 
-	// Create MQTT subscriber
-	mqttSubscriber := mqtt.NewSubscriber(mqttCfg, brooderService)
+	// Hub shared between MQTT subscriber and HTTP stream handler
+	hub := brooders.NewHub()
+
+	mqttSubscriber := mqtt.NewSubscriber(mqttCfg, brooderService, hub)
 	if err := mqttSubscriber.Connect(); err != nil {
 		fmt.Printf("[MQTT] Warning: could not connect: %v\n", err)
 	} else {
@@ -49,6 +50,7 @@ func NewServer() *http.Server {
 		port: port,
 		db:   db,
 		mqtt: mqttSubscriber,
+		hub:  hub,
 	}
 
 	server := &http.Server{
@@ -56,7 +58,7 @@ func NewServer() *http.Server {
 		Handler:      newServer.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // must be 0 — SSE connections are long-lived
 	}
 
 	return server

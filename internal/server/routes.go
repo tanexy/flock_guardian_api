@@ -48,10 +48,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	userService := users.NewService(userRepo)
 	userHandler := users.NewHandler(userService)
 
-	// Brooders
+	// Brooders — hub passed in so StreamSensors gets live MQTT data
 	brooderRepo := brooders.NewGormRepository(db)
 	brooderService := brooders.NewService(brooderRepo)
-	brooderHandler := brooders.NewHandler(brooderService, s.mqtt)
+	brooderHandler := brooders.NewHandler(brooderService, s.mqtt, s.hub)
 
 	api := r.Group("/api/v1")
 	Users(api, userHandler)

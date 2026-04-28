@@ -4,13 +4,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// MQTTPublisher interface so handler can publish commands
-// without importing the mqtt package directly
 type MQTTPublisher interface {
 	Publish(brooderID uint, command string) error
 }
@@ -18,10 +15,11 @@ type MQTTPublisher interface {
 type Handler struct {
 	service Service
 	mqtt    MQTTPublisher
+	hub     *Hub
 }
 
-func NewHandler(service Service, mqtt MQTTPublisher) *Handler {
-	return &Handler{service: service, mqtt: mqtt}
+func NewHandler(service Service, mqtt MQTTPublisher, hub *Hub) *Handler {
+	return &Handler{service: service, mqtt: mqtt, hub: hub}
 }
 
 // GET /api/v1/brooders
@@ -102,7 +100,6 @@ func (h *Handler) UpdateActuators(c *gin.Context) {
 }
 
 // POST /api/v1/brooders/:id/command
-// Mobile app calls this → backend publishes to MQTT → ESP32 receives instantly
 func (h *Handler) SendCommand(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -118,7 +115,6 @@ func (h *Handler) SendCommand(c *gin.Context) {
 		return
 	}
 
-	// Validate command
 	validCommands := map[string]bool{
 		"fan on": true, "fan off": true,
 		"pump on": true, "pump off": true,
@@ -131,7 +127,6 @@ func (h *Handler) SendCommand(c *gin.Context) {
 		return
 	}
 
-	// Publish to MQTT → ESP32 receives instantly
 	if h.mqtt != nil {
 		if err := h.mqtt.Publish(uint(id), body.Command); err != nil {
 			log.Printf("[MQTT] Failed to publish command: %v", err)
@@ -159,21 +154,17 @@ func (h *Handler) StreamSensors(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("Access-Control-Allow-Origin", "*")
 
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	ch := h.hub.Subscribe(uint(id))
+	defer h.hub.Unsubscribe(uint(id), ch)
 
 	clientGone := c.Request.Context().Done()
 
 	for {
 		select {
 		case <-clientGone:
-			return // app disconnected
-		case <-ticker.C:
-			brooder, err := h.service.GetByID(uint(id))
-			if err != nil {
-				continue
-			}
-			c.SSEvent("sensors", brooder)
+			return
+		case data := <-ch:
+			c.SSEvent("sensors", data)
 			c.Writer.Flush()
 		}
 	}
