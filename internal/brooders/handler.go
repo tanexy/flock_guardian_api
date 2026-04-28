@@ -77,6 +77,10 @@ func (h *Handler) UpdateSensors(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Push to any active SSE clients
+	h.hub.Publish(uint(id), data)
+
 	c.JSON(http.StatusOK, gin.H{"message": "sensor data updated"})
 }
 
