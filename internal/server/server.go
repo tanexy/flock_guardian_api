@@ -15,13 +15,20 @@ import (
 )
 
 type Server struct {
-	port int
-	db   database.Service
-	mqtt *mqtt.Subscriber
-	hub  *brooders.Hub
+	HTTPServer *http.Server // exposed so main.go can call ListenAndServe
+	port       int
+	db         database.Service
+	mqtt       *mqtt.Subscriber
+	hub        *brooders.Hub
+	alertHub   *brooders.AlertHub
+	autoCtrl   *brooders.AutoController
+	alertCtrl  *brooders.AlertController
 }
 
-func NewServer() *http.Server {
+// NewServer constructs the Server and its http.Server. The caller must call
+// srv.HTTPServer.ListenAndServe() to start accepting connections, and
+// srv.Shutdown() after it returns to clean up background goroutines.
+func NewServer() *Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 
 	mqttCfg := mqtt.Config{
@@ -36,8 +43,9 @@ func NewServer() *http.Server {
 	brooderRepo := brooders.NewGormRepository(db.DB())
 	brooderService := brooders.NewService(brooderRepo)
 
-	// Hub shared between MQTT subscriber and HTTP stream handler
 	hub := brooders.NewHub()
+	alertHub := brooders.NewAlertHub()
+	alertCtrl := brooders.NewAlertController(alertHub)
 
 	mqttSubscriber := mqtt.NewSubscriber(mqttCfg, brooderService, hub)
 	if err := mqttSubscriber.Connect(); err != nil {
@@ -46,20 +54,35 @@ func NewServer() *http.Server {
 		mqttSubscriber.Subscribe()
 	}
 
-	newServer := &Server{
-		port: port,
-		db:   db,
-		mqtt: mqttSubscriber,
-		hub:  hub,
+	autoCtrl := brooders.NewAutoController(brooderService, mqttSubscriber)
+
+	srv := &Server{
+		port:      port,
+		db:        db,
+		mqtt:      mqttSubscriber,
+		hub:       hub,
+		alertHub:  alertHub,
+		autoCtrl:  autoCtrl,
+		alertCtrl: alertCtrl,
 	}
 
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", newServer.port),
-		Handler:      newServer.RegisterRoutes(),
+	srv.HTTPServer = &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 0, // must be 0 — SSE connections are long-lived
 	}
 
-	return server
+	return srv
+}
+
+// Shutdown stops background goroutines. Call after HTTPServer.Shutdown().
+func (s *Server) Shutdown() {
+	if s.autoCtrl != nil {
+		s.autoCtrl.Stop()
+	}
+	if s.alertCtrl != nil {
+		s.alertCtrl.Stop()
+	}
 }

@@ -28,6 +28,7 @@ func Brooders(rg *gin.RouterGroup, handler *brooders.Handler) {
 		b.PATCH("/:id/actuators", handler.UpdateActuators)
 		b.POST("/:id/command", handler.SendCommand)
 		b.GET("/:id/stream", handler.StreamSensors)
+		b.GET("/:id/alerts/stream", handler.StreamAlerts)
 	}
 }
 
@@ -48,10 +49,18 @@ func (s *Server) RegisterRoutes() http.Handler {
 	userService := users.NewService(userRepo)
 	userHandler := users.NewHandler(userService)
 
-	// Brooders — hub passed in so StreamSensors gets live MQTT data
+	// Brooders — controllers already constructed and owned by Server.
 	brooderRepo := brooders.NewGormRepository(db)
 	brooderService := brooders.NewService(brooderRepo)
-	brooderHandler := brooders.NewHandler(brooderService, s.mqtt, s.hub)
+
+	brooderHandler := brooders.NewHandler(
+		brooderService,
+		s.mqtt,
+		s.hub,
+		s.autoCtrl,
+		s.alertHub,
+		s.alertCtrl,
+	)
 
 	api := r.Group("/api/v1")
 	Users(api, userHandler)

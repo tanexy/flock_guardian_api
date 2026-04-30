@@ -13,13 +13,30 @@ type MQTTPublisher interface {
 }
 
 type Handler struct {
-	service Service
-	mqtt    MQTTPublisher
-	hub     *Hub
+	service   Service
+	mqtt      MQTTPublisher
+	hub       *Hub
+	autoCtrl  *AutoController // nil-safe: auto mode skipped if not wired
+	alertHub  *AlertHub
+	alertCtrl *AlertController // nil-safe: alerts skipped if not wired
 }
 
-func NewHandler(service Service, mqtt MQTTPublisher, hub *Hub) *Handler {
-	return &Handler{service: service, mqtt: mqtt, hub: hub}
+func NewHandler(
+	service Service,
+	mqtt MQTTPublisher,
+	hub *Hub,
+	autoCtrl *AutoController,
+	alertHub *AlertHub,
+	alertCtrl *AlertController,
+) *Handler {
+	return &Handler{
+		service:   service,
+		mqtt:      mqtt,
+		hub:       hub,
+		autoCtrl:  autoCtrl,
+		alertHub:  alertHub,
+		alertCtrl: alertCtrl,
+	}
 }
 
 // GET /api/v1/brooders
@@ -78,8 +95,18 @@ func (h *Handler) UpdateSensors(c *gin.Context) {
 		return
 	}
 
-	// Push to any active SSE clients
+	// Push raw sensor data to SSE sensor-stream clients.
 	h.hub.Publish(uint(id), data)
+
+	// Forward to auto-controller for actuator decisions.
+	if h.autoCtrl != nil {
+		h.autoCtrl.NotifySensorUpdate(uint(id), data)
+	}
+
+	// Forward to alert controller for threshold breach checks.
+	if h.alertCtrl != nil {
+		h.alertCtrl.NotifySensorUpdate(uint(id), data)
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "sensor data updated"})
 }
