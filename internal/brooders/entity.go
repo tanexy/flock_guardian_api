@@ -54,3 +54,12 @@ type ActuatorUpdate struct {
 	DispenseWater bool `json:"dispense_water"`
 	HeaterOn      bool `json:"heater_on"`
 }
+type HistoricalSensorData struct {
+	gorm.Model
+	BrooderID   uint      `json:"brooder_id"`
+	Temperature float64   `json:"temperature"`
+	Humidity    float64   `json:"humidity"`
+	FeedLevel   float64   `json:"feed_level"`
+	WaterLevel  float64   `json:"water_level"`
+	RecordedAt  time.Time `json:"recorded_at"` // from ESP32 ts field
+}

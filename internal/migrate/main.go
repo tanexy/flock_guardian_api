@@ -16,6 +16,7 @@ func main() {
 	stmts, err := gormschema.New("sqlite").Load(
 		&users.User{},
 		&brooders.Brooder{},
+		&brooders.HistoricalSensorData{},
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load schema: %v\n", err)

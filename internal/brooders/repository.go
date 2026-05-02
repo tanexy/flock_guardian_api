@@ -12,6 +12,7 @@ type Repository interface {
 	Create(brooder *Brooder) error
 	UpdateSensorData(id uint, data SensorUpdate) error
 	UpdateActuators(id uint, data ActuatorUpdate) error
+	BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 }
 
 type GormRepository struct {
@@ -20,7 +21,10 @@ type GormRepository struct {
 
 func NewGormRepository(db *gorm.DB) Repository {
 	// Auto migrate
-	db.AutoMigrate(&Brooder{})
+	err := db.AutoMigrate(&Brooder{}, &HistoricalSensorData{})
+	if err != nil {
+		return nil
+	}
 	return &GormRepository{db: db}
 }
 
@@ -58,4 +62,10 @@ func (r *GormRepository) UpdateActuators(id uint, data ActuatorUpdate) error {
 		"heater_on":      data.HeaterOn,
 		"last_updated":   time.Now(),
 	}).Error
+}
+func (r *GormRepository) BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error {
+	for i := range readings {
+		readings[i].BrooderID = brooderID
+	}
+	return r.db.CreateInBatches(readings, 100).Error
 }

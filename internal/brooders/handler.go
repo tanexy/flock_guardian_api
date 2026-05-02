@@ -1,9 +1,12 @@
 package brooders
 
 import (
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +22,17 @@ type Handler struct {
 	autoCtrl  *AutoController // nil-safe: auto mode skipped if not wired
 	alertHub  *AlertHub
 	alertCtrl *AlertController // nil-safe: alerts skipped if not wired
+}
+type BatchSensorReading struct {
+	Temperature float64 `json:"temperature"`
+	Humidity    float64 `json:"humidity"`
+	FeedLevel   float64 `json:"feed_level"`
+	WaterLevel  float64 `json:"water_level"`
+	Ts          int64   `json:"ts"` // millis from ESP32
+}
+
+type BatchSensorUpload struct {
+	Readings []BatchSensorReading `json:"readings"`
 }
 
 func NewHandler(
@@ -199,4 +213,54 @@ func (h *Handler) StreamSensors(c *gin.Context) {
 			c.Writer.Flush()
 		}
 	}
+}
+func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	// Accept either {"readings": [...]} or a raw array [...]
+	var rows []BatchSensorReading
+	bodyBytes, _ := io.ReadAll(c.Request.Body)
+
+	// Try raw array first (what ESP32 sends)
+	if err := json.Unmarshal(bodyBytes, &rows); err != nil {
+		// Try wrapped object
+		var wrapped BatchSensorUpload
+		if err2 := json.Unmarshal(bodyBytes, &wrapped); err2 != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+			return
+		}
+		rows = wrapped.Readings
+	}
+
+	if len(rows) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no readings provided"})
+		return
+	}
+
+	// Convert to model
+	now := time.Now()
+	records := make([]HistoricalSensorData, len(rows))
+	for i, r := range rows {
+		records[i] = HistoricalSensorData{
+			Temperature: r.Temperature,
+			Humidity:    r.Humidity,
+			FeedLevel:   r.FeedLevel,
+			WaterLevel:  r.WaterLevel,
+			RecordedAt:  now, // use now if no RTC on ESP32
+		}
+	}
+
+	if err := h.service.BatchSaveHistoricalSensorData(uint(id), records); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "historical data saved",
+		"count":   len(records),
+	})
 }

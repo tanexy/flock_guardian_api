@@ -6,6 +6,7 @@ type Service interface {
 	Create(brooder *Brooder) error
 	UpdateSensorData(id uint, data SensorUpdate) error
 	UpdateActuators(id uint, data ActuatorUpdate) error
+	BatchSaveHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 }
 
 type BrooderService struct {
@@ -18,6 +19,9 @@ func NewService(repo Repository) Service {
 
 func (s *BrooderService) GetAll() ([]Brooder, error) {
 	return s.repo.FindAll()
+}
+func (s *BrooderService) BatchSaveHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error {
+	return s.repo.BatchInsertHistoricalSensorData(brooderID, readings)
 }
 
 func (s *BrooderService) GetByID(id uint) (*Brooder, error) {
