@@ -13,6 +13,7 @@ type Repository interface {
 	UpdateSensorData(id uint, data SensorUpdate) error
 	UpdateActuators(id uint, data ActuatorUpdate) error
 	BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
+	GetHistoricalSensorData(brooderID uint, since time.Time) ([]HistoricalSensorData, error)
 }
 
 type GormRepository struct {
@@ -68,4 +69,15 @@ func (r *GormRepository) BatchInsertHistoricalSensorData(brooderID uint, reading
 		readings[i].BrooderID = brooderID
 	}
 	return r.db.CreateInBatches(readings, 100).Error
+}
+func (r *GormRepository) GetHistoricalSensorData(
+	brooderID uint,
+	since time.Time,
+) ([]HistoricalSensorData, error) {
+	var rows []HistoricalSensorData
+	err := r.db.
+		Where("brooder_id = ? AND recorded_at >= ?", brooderID, since).
+		Order("recorded_at ASC").
+		Find(&rows).Error
+	return rows, err
 }

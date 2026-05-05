@@ -2,6 +2,7 @@ package brooders
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -263,4 +264,47 @@ func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 		"message": "historical data saved",
 		"count":   len(records),
 	})
+}
+func (h *Handler) GetAnalytics(c *gin.Context) {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return // parseIDParam already wrote the error response
+	}
+
+	period := c.DefaultQuery("period", "7d")
+
+	// Validate period to prevent unexpected values reaching the service.
+	switch period {
+	case "7d", "14d", "30d":
+		// ok
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "period must be one of: 7d, 14d, 30d",
+		})
+		return
+	}
+
+	result, err := h.service.ComputeAnalytics(id, period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// ─── Shared ID parser ─────────────────────────────────────────────────────────
+//
+// Keeps handler methods DRY — replaces the repeated strconv.Atoi blocks.
+// Returns the parsed ID and writes a 400 response on error.
+
+func parseIDParam(c *gin.Context) (uint, error) {
+	var id int
+	// Use gin's built-in ShouldBindUri or manual parse — manual is fine here.
+	raw := c.Param("id")
+	if _, err := fmt.Sscanf(raw, "%d", &id); err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return 0, fmt.Errorf("invalid id: %s", raw)
+	}
+	return uint(id), nil
 }

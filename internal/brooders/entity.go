@@ -9,6 +9,7 @@ import (
 type Brooder struct {
 	gorm.Model
 	ID       uint   `json:"id" gorm:"primaryKey"`
+	UUID     string `json:"uuid"`
 	Name     string `json:"name"`
 	Location string `json:"location"`
 
@@ -20,9 +21,11 @@ type Brooder struct {
 	Humidity    float64 `json:"humidity"`    // %
 
 	// Feed System
-	FeedLevel    float64 `json:"feed_level"`
-	WaterLevel   float64 `json:"water_level"`
-	FeedCapacity float64 `json:"feed_capacity"`
+	FeedLevel         float64 `json:"feed_level"`
+	WaterLevel        float64 `json:"water_level"`
+	FeedCapacity      float64 `json:"feed_capacity"`
+	TargetTemperature float64 `json:"target_temperature"`
+	TargetHumidity    float64 `json:"target_humidity"`
 
 	// Actuators / Controls
 	FanOn         bool `json:"fan_on"`
