@@ -2,6 +2,7 @@ package users
 
 import (
 	"errors"
+	"flock_guardian_api/internal/brooders"
 
 	"gorm.io/gorm"
 )
@@ -10,6 +11,7 @@ import (
 type Repository interface {
 	FindByEmail(email string) (*User, error)
 	Create(user *User) error
+	FindByFarm(farm string) (string, error)
 }
 
 // GormRepository implements Repository using GORM
@@ -35,4 +37,14 @@ func (r *GormRepository) FindByEmail(email string) (*User, error) {
 // Create inserts a new user into the database
 func (r *GormRepository) Create(user *User) error {
 	return r.db.Create(user).Error
+}
+func (r *GormRepository) FindByFarm(farm string) (string, error) {
+	var brooder brooders.Brooder
+
+	result := r.db.Where("farm = ?", farm).First(&brooder)
+	if result.Error != nil {
+		return "", result.Error
+	}
+
+	return brooder.UUID, nil
 }

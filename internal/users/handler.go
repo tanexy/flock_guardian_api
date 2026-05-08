@@ -47,7 +47,9 @@ func (h *Handler) Login(c *gin.Context) {
 		Token        string `json:"XyZaccess_token"`
 		RefreshToken string `json:"XyZrefresh_token"`
 		Farm         string `json:"farm"`
+		Uuid         string `json:"uuid"`
 	}
+	var uuid, _ = h.service.GetUUID(user.Farm)
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": UserResponse{
@@ -56,6 +58,7 @@ func (h *Handler) Login(c *gin.Context) {
 			Token:        accessToken,
 			RefreshToken: refreshToken,
 			Farm:         user.Farm,
+			Uuid:         uuid,
 		},
 	})
 }

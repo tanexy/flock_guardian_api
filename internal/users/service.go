@@ -62,3 +62,6 @@ func (s *Service) Create(user *User) error {
 	// Create user
 	return s.repo.Create(user)
 }
+func (s *Service) GetUUID(farm string) (string, error) {
+	return s.repo.FindByFarm(farm)
+}
