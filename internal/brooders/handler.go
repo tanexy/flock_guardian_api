@@ -277,7 +277,7 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 }
 
 func (h *Handler) ComputeFCR(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("id")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing brooder uuid"})
 		return
