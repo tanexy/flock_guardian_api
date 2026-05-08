@@ -14,6 +14,7 @@ type Repository interface {
 	UpdateActuators(id uint, data ActuatorUpdate) error
 	BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 	GetHistoricalSensorData(brooderID uint, since time.Time) ([]HistoricalSensorData, error)
+	FindByUUID(uuid string) (*Brooder, error)
 }
 
 type GormRepository struct {
@@ -22,7 +23,7 @@ type GormRepository struct {
 
 func NewGormRepository(db *gorm.DB) Repository {
 	// Auto migrate
-	err := db.AutoMigrate(&Brooder{}, &HistoricalSensorData{})
+	err := db.AutoMigrate(&Brooder{}, &HistoricalSensorData{}, &FCRInput{}, &FCRResult{})
 	if err != nil {
 		return nil
 	}
@@ -69,6 +70,13 @@ func (r *GormRepository) BatchInsertHistoricalSensorData(brooderID uint, reading
 		readings[i].BrooderID = brooderID
 	}
 	return r.db.CreateInBatches(readings, 100).Error
+}
+func (r *GormRepository) FindByUUID(uuid string) (*Brooder, error) {
+	var brooder Brooder
+
+	result := r.db.Where("uuid = ?", uuid).First(&brooder)
+
+	return &brooder, result.Error
 }
 func (r *GormRepository) GetHistoricalSensorData(
 	brooderID uint,

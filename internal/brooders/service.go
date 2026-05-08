@@ -15,6 +15,7 @@ type Service interface {
 	UpdateActuators(id uint, data ActuatorUpdate) error
 	BatchSaveHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 	ComputeAnalytics(brooderID uint, period string) (*AnalyticsResponse, error)
+	ComputeFCR(in FCRInput) (*FCRResult, error)
 }
 
 type BrooderService struct {
@@ -28,6 +29,7 @@ func NewService(repo Repository) Service {
 func (s *BrooderService) GetAll() ([]Brooder, error) {
 	return s.repo.FindAll()
 }
+
 func (s *BrooderService) BatchSaveHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error {
 	return s.repo.BatchInsertHistoricalSensorData(brooderID, readings)
 }
@@ -48,15 +50,10 @@ func (s *BrooderService) UpdateActuators(id uint, data ActuatorUpdate) error {
 	return s.repo.UpdateActuators(id, data)
 }
 
-// ComputeAnalytics fetches historical sensor data for [brooderID] over the
-// requested period and returns a fully pre-computed AnalyticsResponse.
-//
-// period accepts "7d", "14d", or "30d".  Anything else defaults to 7d.
 func (s *BrooderService) ComputeAnalytics(brooderID uint, period string) (*AnalyticsResponse, error) {
 	days := parsePeriodDays(period)
 	since := time.Now().UTC().AddDate(0, 0, -days)
 
-	// Pull all historical rows for this brooder in the time window.
 	rows, err := s.repo.GetHistoricalSensorData(brooderID, since)
 	if err != nil {
 		return nil, fmt.Errorf("analytics: fetch history: %w", err)
@@ -73,7 +70,63 @@ func (s *BrooderService) ComputeAnalytics(brooderID uint, period string) (*Analy
 	}, nil
 }
 
-// ─── Period helper ─────────────────────────────────────────────────────────────
+func (s *BrooderService) ComputeFCR(in FCRInput) (*FCRResult, error) {
+	if in.TotalFeedKg <= 0 {
+		return nil, fmt.Errorf("fcr: total_feed_kg must be > 0")
+	}
+	if in.EndWeightKg <= in.StartWeightKg {
+		return nil, fmt.Errorf("fcr: end_weight_kg must exceed start_weight_kg")
+	}
+
+	brooder, err := s.repo.FindByUUID(in.BrooderUUID)
+	if err != nil {
+		return nil, fmt.Errorf("fcr: brooder not found: %w", err)
+	}
+
+	numberOfBirds := int(brooder.FlockSize)
+	mortalityCount := int(brooder.MortalityCount)
+
+	if numberOfBirds <= 0 {
+		return nil, fmt.Errorf("fcr: brooder has no flock size set")
+	}
+	if mortalityCount < 0 || mortalityCount >= numberOfBirds {
+		return nil, fmt.Errorf("fcr: mortality_count out of range [0, flock_size)")
+	}
+
+	adjustedBirds := numberOfBirds - mortalityCount
+	totalWeightGain := (in.EndWeightKg - in.StartWeightKg) * float64(adjustedBirds)
+
+	if totalWeightGain <= 0 {
+		return nil, fmt.Errorf("fcr: computed total weight gain is zero or negative")
+	}
+
+	fcr := round2(in.TotalFeedKg / totalWeightGain)
+	feedPerBird := round2(in.TotalFeedKg / float64(adjustedBirds))
+
+	return &FCRResult{
+		BrooderUUID:       in.BrooderUUID,
+		FlockID:           in.FlockID,
+		FCR:               fcr,
+		Rating:            fcrRating(fcr),
+		TotalFeedKg:       round2(in.TotalFeedKg),
+		TotalWeightGainKg: round2(totalWeightGain),
+		AdjustedBirds:     adjustedBirds,
+		FeedPerBirdKg:     feedPerBird,
+	}, nil
+}
+
+func fcrRating(fcr float64) string {
+	switch {
+	case fcr < 1.6:
+		return "Excellent"
+	case fcr < 1.9:
+		return "Good"
+	case fcr < 2.2:
+		return "Fair"
+	default:
+		return "Poor"
+	}
+}
 
 func parsePeriodDays(period string) int {
 	switch period {
@@ -86,16 +139,7 @@ func parsePeriodDays(period string) int {
 	}
 }
 
-// ─── Aggregation ──────────────────────────────────────────────────────────────
-
-// aggregate groups rows by calendar day (UTC) and computes:
-//   - per-day averages, min/max, end-of-day snapshot
-//   - overall period summary KPIs
-//
-// Days with no readings still appear in daily_breakdown with zero values so
-// the chart always renders the expected number of x-axis labels.
 func aggregate(rows []HistoricalSensorData, days int) (AnalyticsSummary, []DailyAnalytics) {
-	// Build a map keyed by "YYYY-MM-DD" for fast bucketing.
 	type bucket struct {
 		temps     []float64
 		humids    []float64
@@ -118,12 +162,10 @@ func aggregate(rows []HistoricalSensorData, days int) (AnalyticsSummary, []Daily
 		b.humids = append(b.humids, r.Humidity)
 		b.feeds = append(b.feeds, r.FeedLevel)
 		b.waters = append(b.waters, r.WaterLevel)
-		// Track end-of-day snapshot (last reading wins as rows are time-ordered).
 		b.lastFeed = r.FeedLevel
 		b.lastWater = r.WaterLevel
 	}
 
-	// Generate day keys for the full period so we never skip a day.
 	now := time.Now().UTC()
 	dayKeys := make([]string, days)
 	for i := 0; i < days; i++ {
@@ -133,7 +175,6 @@ func aggregate(rows []HistoricalSensorData, days int) (AnalyticsSummary, []Daily
 
 	daily := make([]DailyAnalytics, 0, days)
 
-	// Period-level accumulators.
 	var (
 		allTemps   []float64
 		allHumids  []float64
@@ -146,11 +187,10 @@ func aggregate(rows []HistoricalSensorData, days int) (AnalyticsSummary, []Daily
 
 	for _, key := range dayKeys {
 		t, _ := time.Parse("2006-01-02", key)
-		label := t.Weekday().String()[:3] // "Mon", "Tue", …
+		label := t.Weekday().String()[:3]
 
 		b, exists := buckets[key]
 		if !exists {
-			// No data for this day — emit an empty slot.
 			daily = append(daily, DailyAnalytics{
 				Date:     key,
 				DayLabel: label,
@@ -210,8 +250,6 @@ func aggregate(rows []HistoricalSensorData, days int) (AnalyticsSummary, []Daily
 	return summary, daily
 }
 
-// ─── Alert summary ────────────────────────────────────────────────────────────
-
 func buildAlertSummary(rows []HistoricalSensorData) AlertSummary {
 	var s AlertSummary
 	for _, r := range rows {
@@ -238,8 +276,6 @@ func buildAlertSummary(rows []HistoricalSensorData) AlertSummary {
 	}
 	return s
 }
-
-// ─── Math helpers ─────────────────────────────────────────────────────────────
 
 func mean(v []float64) float64 {
 	if len(v) == 0 {
@@ -269,7 +305,6 @@ func minSlice(v []float64) float64 {
 	if len(v) == 0 {
 		return 0
 	}
-	// Use sort-free scan — O(n).
 	m := v[0]
 	for _, x := range v[1:] {
 		if x < m {
@@ -296,7 +331,6 @@ func round2(f float64) float64 {
 	return math.Round(f*100) / 100
 }
 
-// sortedKeys returns map keys sorted ascending (used only in tests).
 func sortedKeys(m map[string]*struct{}) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

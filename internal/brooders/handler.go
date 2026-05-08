@@ -20,16 +20,17 @@ type Handler struct {
 	service   Service
 	mqtt      MQTTPublisher
 	hub       *Hub
-	autoCtrl  *AutoController // nil-safe: auto mode skipped if not wired
+	autoCtrl  *AutoController
 	alertHub  *AlertHub
-	alertCtrl *AlertController // nil-safe: alerts skipped if not wired
+	alertCtrl *AlertController
 }
+
 type BatchSensorReading struct {
 	Temperature float64 `json:"temperature"`
 	Humidity    float64 `json:"humidity"`
 	FeedLevel   float64 `json:"feed_level"`
 	WaterLevel  float64 `json:"water_level"`
-	Ts          int64   `json:"ts"` // millis from ESP32
+	Ts          int64   `json:"ts"`
 }
 
 type BatchSensorUpload struct {
@@ -54,7 +55,6 @@ func NewHandler(
 	}
 }
 
-// GET /api/v1/brooders
 func (h *Handler) GetAll(c *gin.Context) {
 	brooders, err := h.service.GetAll()
 	if err != nil {
@@ -64,7 +64,6 @@ func (h *Handler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, brooders)
 }
 
-// GET /api/v1/brooders/:id
 func (h *Handler) GetByID(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -79,7 +78,6 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, brooder)
 }
 
-// POST /api/v1/brooders
 func (h *Handler) Create(c *gin.Context) {
 	var brooder Brooder
 	if err := c.ShouldBindJSON(&brooder); err != nil {
@@ -93,7 +91,6 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, brooder)
 }
 
-// PATCH /api/v1/brooders/:id/sensors
 func (h *Handler) UpdateSensors(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -110,15 +107,11 @@ func (h *Handler) UpdateSensors(c *gin.Context) {
 		return
 	}
 
-	// Push raw sensor data to SSE sensor-stream clients.
 	h.hub.Publish(uint(id), data)
 
-	// Forward to auto-controller for actuator decisions.
 	if h.autoCtrl != nil {
 		h.autoCtrl.NotifySensorUpdate(uint(id), data)
 	}
-
-	// Forward to alert controller for threshold breach checks.
 	if h.alertCtrl != nil {
 		h.alertCtrl.NotifySensorUpdate(uint(id), data)
 	}
@@ -126,7 +119,6 @@ func (h *Handler) UpdateSensors(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "sensor data updated"})
 }
 
-// PATCH /api/v1/brooders/:id/actuators
 func (h *Handler) UpdateActuators(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -145,7 +137,6 @@ func (h *Handler) UpdateActuators(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "actuators updated"})
 }
 
-// POST /api/v1/brooders/:id/command
 func (h *Handler) SendCommand(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -187,7 +178,6 @@ func (h *Handler) SendCommand(c *gin.Context) {
 	})
 }
 
-// GET /api/v1/brooders/:id/stream
 func (h *Handler) StreamSensors(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -215,6 +205,7 @@ func (h *Handler) StreamSensors(c *gin.Context) {
 		}
 	}
 }
+
 func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -222,13 +213,10 @@ func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 		return
 	}
 
-	// Accept either {"readings": [...]} or a raw array [...]
 	var rows []BatchSensorReading
 	bodyBytes, _ := io.ReadAll(c.Request.Body)
 
-	// Try raw array first (what ESP32 sends)
 	if err := json.Unmarshal(bodyBytes, &rows); err != nil {
-		// Try wrapped object
 		var wrapped BatchSensorUpload
 		if err2 := json.Unmarshal(bodyBytes, &wrapped); err2 != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
@@ -242,7 +230,6 @@ func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 		return
 	}
 
-	// Convert to model
 	now := time.Now()
 	records := make([]HistoricalSensorData, len(rows))
 	for i, r := range rows {
@@ -251,7 +238,7 @@ func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 			Humidity:    r.Humidity,
 			FeedLevel:   r.FeedLevel,
 			WaterLevel:  r.WaterLevel,
-			RecordedAt:  now, // use now if no RTC on ESP32
+			RecordedAt:  now,
 		}
 	}
 
@@ -265,22 +252,18 @@ func (h *Handler) BatchUploadSensorHistory(c *gin.Context) {
 		"count":   len(records),
 	})
 }
+
 func (h *Handler) GetAnalytics(c *gin.Context) {
 	id, err := parseIDParam(c)
 	if err != nil {
-		return // parseIDParam already wrote the error response
+		return
 	}
 
 	period := c.DefaultQuery("period", "7d")
-
-	// Validate period to prevent unexpected values reaching the service.
 	switch period {
 	case "7d", "14d", "30d":
-		// ok
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "period must be one of: 7d, 14d, 30d",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "period must be one of: 7d, 14d, 30d"})
 		return
 	}
 
@@ -293,15 +276,32 @@ func (h *Handler) GetAnalytics(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// ─── Shared ID parser ─────────────────────────────────────────────────────────
-//
-// Keeps handler methods DRY — replaces the repeated strconv.Atoi blocks.
-// Returns the parsed ID and writes a 400 response on error.
+func (h *Handler) ComputeFCR(c *gin.Context) {
+	uuid := c.Param("uuid")
+	if uuid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing brooder uuid"})
+		return
+	}
+
+	var input FCRInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	input.BrooderUUID = uuid
+
+	result, err := h.service.ComputeFCR(input)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
 
 func parseIDParam(c *gin.Context) (uint, error) {
-	var id int
-	// Use gin's built-in ShouldBindUri or manual parse — manual is fine here.
 	raw := c.Param("id")
+	var id int
 	if _, err := fmt.Sscanf(raw, "%d", &id); err != nil || id <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return 0, fmt.Errorf("invalid id: %s", raw)

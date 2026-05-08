@@ -8,13 +8,15 @@ import (
 
 type Brooder struct {
 	gorm.Model
-	ID       uint   `json:"id" gorm:"primaryKey"`
-	UUID     string `json:"uuid"`
-	Name     string `json:"name"`
-	Location string `json:"location"`
+	ID             uint   `json:"id" gorm:"primaryKey"`
+	UUID           string `json:"uuid" gorm:"uniqueIndex"`
+	Name           string `json:"name"`
+	Location       string `json:"location"`
+	FlockSize      uint   `json:"flock_size"`
+	MortalityCount uint   `json:"mortality_count"`
 
 	// Ownership
-	Farm uint `json:"farm"`
+	Farm string `json:"farm"`
 
 	// Environmental Data
 	Temperature float64 `json:"temperature"` // °C
