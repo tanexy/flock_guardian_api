@@ -32,6 +32,7 @@ func Brooders(rg *gin.RouterGroup, handler *brooders.Handler) {
 		b.POST("/:id/sensors/batch", handler.BatchUploadSensorHistory)
 		b.GET("/:id/analytics", handler.GetAnalytics)
 		b.POST("/:id/fcr", handler.ComputeFCR)
+		b.POST(":id/:state/toggle", handler.ToggleAutomation)
 	}
 }
 

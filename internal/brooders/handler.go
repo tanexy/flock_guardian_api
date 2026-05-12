@@ -136,6 +136,29 @@ func (h *Handler) UpdateActuators(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "actuators updated"})
 }
+func (h *Handler) ToggleAutomation(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id format"})
+		return
+	}
+
+	state, err := strconv.ParseBool(c.Param("state"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "state must be 'true' or 'false'"})
+		return
+	}
+	if err := h.service.ToggleControl(uint(id), state); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":      id,
+		"enabled": state,
+		"message": "automation updated",
+	})
+}
 
 func (h *Handler) SendCommand(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))

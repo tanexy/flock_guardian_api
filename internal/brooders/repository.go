@@ -15,6 +15,7 @@ type Repository interface {
 	BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 	GetHistoricalSensorData(brooderID uint, since time.Time) ([]HistoricalSensorData, error)
 	FindByUUID(uuid string) (*Brooder, error)
+	ToggleControl(id uint, state bool) error
 }
 
 type GormRepository struct {
@@ -63,6 +64,12 @@ func (r *GormRepository) UpdateActuators(id uint, data ActuatorUpdate) error {
 		"dispense_water": data.DispenseWater,
 		"heater_on":      data.HeaterOn,
 		"last_updated":   time.Now(),
+	}).Error
+}
+func (r *GormRepository) ToggleControl(id uint, state bool) error {
+	return r.db.Model(&Brooder{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"auto_mode":    state,
+		"last_updated": time.Now(),
 	}).Error
 }
 func (r *GormRepository) BatchInsertHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error {

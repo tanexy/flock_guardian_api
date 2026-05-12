@@ -16,6 +16,7 @@ type Service interface {
 	BatchSaveHistoricalSensorData(brooderID uint, readings []HistoricalSensorData) error
 	ComputeAnalytics(brooderID uint, period string) (*AnalyticsResponse, error)
 	ComputeFCR(in FCRInput) (*FCRResult, error)
+	ToggleControl(id uint, state bool) error
 }
 
 type BrooderService struct {
@@ -49,7 +50,9 @@ func (s *BrooderService) UpdateSensorData(id uint, data SensorUpdate) error {
 func (s *BrooderService) UpdateActuators(id uint, data ActuatorUpdate) error {
 	return s.repo.UpdateActuators(id, data)
 }
-
+func (s *BrooderService) ToggleControl(id uint, state bool) error {
+	return s.repo.ToggleControl(id, state)
+}
 func (s *BrooderService) ComputeAnalytics(brooderID uint, period string) (*AnalyticsResponse, error) {
 	days := parsePeriodDays(period)
 	since := time.Now().UTC().AddDate(0, 0, -days)
