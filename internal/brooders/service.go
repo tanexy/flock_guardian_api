@@ -95,13 +95,15 @@ func (s *BrooderService) ComputeFCR(in FCRInput) (*FCRResult, error) {
 
 	adjustedBirds := numberOfBirds - mortalityCount
 	totalWeightGain := (in.EndWeightKg - in.StartWeightKg) * float64(adjustedBirds)
+	totalWeightGainPerBird := (in.EndWeightKg - in.StartWeightKg)
 
 	if totalWeightGain <= 0 {
 		return nil, fmt.Errorf("fcr: computed total weight gain is zero or negative")
 	}
 
-	fcr := round2(in.TotalFeedKg / totalWeightGain)
+	//fcr := round2(in.TotalFeedKg / totalWeightGain)
 	feedPerBird := round2(in.TotalFeedKg / float64(adjustedBirds))
+	fcr := round2(feedPerBird / totalWeightGainPerBird)
 
 	return &FCRResult{
 		BrooderUUID:       in.BrooderUUID,
